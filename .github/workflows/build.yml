@@ -37,6 +37,23 @@ jobs:
           mkdir -p /tmp/extract
           unzip -oq "$ZIP_FILE" -d /tmp/extract
 
+          # Cari pubspec.yaml di dalam hasil extract - ini menentukan folder
+          # mana yang jadi "akar" project, TIDAK PEDULI apakah zip punya
+          # folder pembungkus (mis. miku_ai/pubspec.yaml) atau tidak
+          # (pubspec.yaml langsung di root zip). Jauh lebih aman daripada
+          # menebak "folder pertama yang ditemukan".
+          PUBSPEC_PATH=$(find /tmp/extract -maxdepth 4 -name 'pubspec.yaml' | head -n1)
+
+          if [ -z "$PUBSPEC_PATH" ]; then
+            echo "❌ pubspec.yaml tidak ditemukan di dalam $ZIP_FILE"
+            echo "=== Isi zip yang ter-extract ==="
+            find /tmp/extract -maxdepth 4
+            exit 1
+          fi
+
+          SRC_DIR=$(dirname "$PUBSPEC_PATH")
+          echo "✅ Project root terdeteksi di: $SRC_DIR"
+
           # Hapus semua isi root repo KECUALI .github dan .git, supaya sisa
           # file lama (android/ parsial, build-config.json, dst) tidak ikut kebawa.
           find . -mindepth 1 -maxdepth 1 \
@@ -45,16 +62,14 @@ jobs:
             ! -name "$ZIP_FILE" \
             -exec rm -rf {} +
 
-          # zip biasanya punya satu folder pembungkus (mis. miku_ai/) -
-          # ambil isinya, bukan foldernya, supaya pubspec.yaml jadi ada di root.
-          SRC_DIR=$(find /tmp/extract -mindepth 1 -maxdepth 1 -type d | head -n1)
-          if [ -z "$SRC_DIR" ]; then
-            SRC_DIR=/tmp/extract
-          fi
           cp -R "$SRC_DIR"/. .
 
           echo "=== Isi root repo setelah extract ==="
           ls -la
+          echo "=== Isi folder lib/ ==="
+          ls -la lib/ || echo "⚠️ folder lib/ tidak ada"
+          echo "=== Isi folder android/ ==="
+          ls -la android/ || echo "⚠️ folder android/ tidak ada"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

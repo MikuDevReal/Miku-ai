@@ -1,1 +1,110 @@
+name: Build Miku AI APK
 
+on:
+  push:
+    branches:
+      - build
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: '17'
+
+jobs:
+  build:
+    name: Build Flutter Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Dipindah ke paling awal (sebelum Setup JDK) karena langkah cache
+      # gradle di setup-java butuh file gradle sudah ada di repo -
+      # dan file itu baru muncul setelah zip project di-extract di sini.
+      - name: Clean workspace & extract project
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP_FILE="flutter-project.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "❌ $ZIP_FILE tidak ditemukan di root repo."
+            echo "Upload file zip project Flutter lengkap dengan nama persis: $ZIP_FILE"
+            exit 1
+          fi
+
+          mkdir -p /tmp/extract
+          unzip -oq "$ZIP_FILE" -d /tmp/extract
+
+          # Hapus semua isi root repo KECUALI .github dan .git, supaya sisa
+          # file lama (android/ parsial, build-config.json, dst) tidak ikut kebawa.
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name '.github' \
+            ! -name '.git' \
+            ! -name "$ZIP_FILE" \
+            -exec rm -rf {} +
+
+          # zip biasanya punya satu folder pembungkus (mis. miku_ai/) -
+          # ambil isinya, bukan foldernya, supaya pubspec.yaml jadi ada di root.
+          SRC_DIR=$(find /tmp/extract -mindepth 1 -maxdepth 1 -type d | head -n1)
+          if [ -z "$SRC_DIR" ]; then
+            SRC_DIR=/tmp/extract
+          fi
+          cp -R "$SRC_DIR"/. .
+
+          echo "=== Isi root repo setelah extract ==="
+          ls -la
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show tool versions
+        run: |
+          flutter --version
+          dart --version
+          java -version
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "❌ APK tidak ditemukan: $APK"
+            find build -type f -name '*.apk' -print || true
+            exit 1
+          fi
+          echo "✅ APK berhasil dibuat:"
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miku-AI-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30

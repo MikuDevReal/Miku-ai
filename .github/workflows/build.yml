@@ -81,9 +81,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      # Dikunci ke versi tertentu (bukan "selalu versi stable terbaru").
+      # Flutter versi terbaru sekarang menarik Android Gradle Plugin (AGP) 9+,
+      # yang mewajibkan format penulisan build.gradle gaya baru dan bikin
+      # build.gradle project ini (gaya lama) gagal dengan pesan:
+      # "Starting AGP 9+, only the new DSL interface will be read".
+      # Versi di bawah ini masih pakai AGP 8.x yang cocok dengan project kita.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.5'
           channel: stable
           cache: true
 
